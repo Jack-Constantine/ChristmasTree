@@ -131,7 +131,7 @@
                 • <span class="highlight">挥动</span> : 旋转视图 (仅散开时)<br/>
                 • <span class="highlight">捏合</span> : 抓取照片 (需上传)
             </div>
-            <button id="upload-btn" onclick="document.getElementById('file-input').click()">上传纪念照片</button>
+            <!-- <button id="upload-btn" onclick="document.getElementById('file-input').click()">上传纪念照片</button> -->
             <input type="file" id="file-input" multiple accept="image/*">
         </div>
         <div id="loading">CRAFTING MAGIC...</div>
@@ -155,8 +155,8 @@
             treeHeight: 75,
             maxRadius: 30,
             camDistance: 110,
-            bloomStrength: 0.7,
-            bloomThreshold: 0.35,
+            bloomStrength: 0.3,
+            bloomThreshold: 0.7,
             bloomRadius: 0.6
         };
 
@@ -212,7 +212,7 @@
             renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // 限制DPR以优化性能
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.1;
+            renderer.toneMappingExposure =1;
             container.appendChild(renderer.domElement);
 
             const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -421,17 +421,31 @@
         function handlePhysicsRotation() {
             if (currentState === STATE.ZOOM) {
                 // 缩放模式下停止旋转，方便观看
-                rotationVelocity.x *= 0.8;
-                rotationVelocity.y *= 0.8;
+                rotationVelocity.y *= 0.975;   // 原来 0.95（衰减太快）
+                rotationVelocity.x *= 0.975;
+                mainGroup.rotation.x *= 0.99;  // 原来 0.98（回正太快）
+
             } else if (currentState === STATE.SCATTER) {
                 if (isHandPresent) {
                     const deltaX = handPos.x - lastHandPos.x;
                     const deltaY = handPos.y - lastHandPos.y;
                     
                     // 增加灵敏度但限制最大速度
-                    if (Math.abs(deltaX) > 0.001) rotationVelocity.y += deltaX * 0.2;
-                    if (Math.abs(deltaY) > 0.001) rotationVelocity.x += deltaY * 0.1;
-                    
+                    // 灵敏度（越大越“滑得远”）
+                    const SENS_Y = 0.3;   // 左右旋转（原来 0.2）
+                    const SENS_X = 0.3;   // 上下旋转（原来 0.1）
+
+                    // 限制最大速度，避免飞出去
+                    const MAX_VY = 0.03;
+                    const MAX_VX = 0.03;
+
+                    if (Math.abs(deltaX) > 0.001) rotationVelocity.y += deltaX * SENS_Y;
+                    if (Math.abs(deltaY) > 0.001) rotationVelocity.x += deltaY * SENS_X;
+
+                    // clamp
+                    rotationVelocity.y = THREE.MathUtils.clamp(rotationVelocity.y, -MAX_VY, MAX_VY);
+                    rotationVelocity.x = THREE.MathUtils.clamp(rotationVelocity.x, -MAX_VX, MAX_VX);
+
                     lastHandPos.x = handPos.x;
                     lastHandPos.y = handPos.y;
                 }
@@ -533,7 +547,7 @@
                     // 实际上让照片飞到 (0,0,80) 相对于相机的点更简单，但为了保持层级，我们转换坐标
                     
                     // 简化策略：将目标设为相机前方，并应用 group 的逆变换
-                    const camFront = new THREE.Vector3(0, 0, -80); // 相机空间
+                    const camFront = new THREE.Vector3(0, 0, -25); // 相机空间
                     camFront.applyMatrix4(camera.matrixWorld); // 世界空间
                     targetPos = mainGroup.worldToLocal(camFront); // 局部空间
 
@@ -809,9 +823,98 @@
             photoMeshes.push(mesh);
             mainGroup.add(mesh);
         }
+        function loadDefaultPhotos() {
+        const urls = [
+            "./photos/1.png",
+            "./photos/2.png",
+            "./photos/3.png",
+            "./photos/4.png",
+            "./photos/5.png"
+            ,"./photos/6.png"
+            ,"./photos/7.png"
+            ,"./photos/8.png"
+            ,"./photos/9.png"
+            ,"./photos/10.png"
+            ,"./photos/11.png"
+            ,"./photos/12.png"
+            ,"./photos/13.png"
+            ,"./photos/14.png"
+            ,"./photos/15.png"
+            ,"./photos/16.png"
+            ,"./photos/17.png"
+            ,"./photos/18.png"
+            ,
+        ];
+
+        const loader = new THREE.TextureLoader();
+        let loaded = 0;
+
+        urls.forEach((url) => {
+            loader.load(
+            url,
+            (tex) => {
+                tex.colorSpace = THREE.SRGBColorSpace;
+                addPhotoMeshFromTexture(tex);
+                loaded++;
+                updateStatus(`已加载默认照片 ${loaded}/${urls.length}`, "#fff");
+            },
+            undefined,
+            (err) => {
+                console.warn("加载失败:", url, err);
+            }
+            );
+        });
+        }
+
+        // 用纹理创建照片（替代 addPhotoMesh(img) 的入口）
+        function addPhotoMeshFromTexture(tex) {
+        // 关键：如果你想保持比例，需要知道图片宽高。
+        // three.js TextureLoader 默认拿不到 image 尺寸前，你可以用 tex.image（加载成功后可用）
+        const img = tex.image;
+        let w = 4, h = 4;
+        if (img && img.width && img.height) {
+            if (img.width > img.height) h = 4 * (img.height / img.width);
+            else w = 4 * (img.width / img.height);
+        }
+
+        const geo = new THREE.PlaneGeometry(w, h);
+        const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        // 金色边框（沿用你现有逻辑）
+        const frame = new THREE.Mesh(
+            new THREE.BoxGeometry(w + 0.2, h + 0.2, 0.1),
+            new THREE.MeshPhysicalMaterial({ color: 0xffd700, roughness: 0.2, metalness: 1 })
+        );
+        frame.position.z = -0.06;
+        mesh.add(frame);
+
+        // 下面这段“随机分布 + userData”基本照搬你 addPhotoMesh(img) 的逻辑即可
+        const h_pos = (Math.random() - 0.5) * CONFIG.treeHeight;
+        const normH = (h_pos + CONFIG.treeHeight / 2) / CONFIG.treeHeight;
+        const maxR = CONFIG.maxRadius * (1 - normH) + 2;
+
+        const r = maxR * (0.6 + 0.4 * Math.random());
+        const theta = Math.random() * Math.PI * 2;
+
+        const treePos = new THREE.Vector3(r * Math.cos(theta), h_pos, r * Math.sin(theta));
+        const scatterPos = randomSpherePoint(60);
+
+        mesh.userData = {
+            treePos,
+            scatterPos,
+            baseRot: new THREE.Euler(0, theta + Math.PI / 2, 0),
+        };
+        mesh.position.copy(treePos);
+        mesh.lookAt(new THREE.Vector3(0, h_pos, 0));
+
+        photoMeshes.push(mesh);
+        mainGroup.add(mesh);
+        }
 
         // 启动
         initThree();
+        loadDefaultPhotos();
         animate();
         setupMediaPipe();
     </script>
