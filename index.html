@@ -533,7 +533,7 @@
                     // 实际上让照片飞到 (0,0,80) 相对于相机的点更简单，但为了保持层级，我们转换坐标
                     
                     // 简化策略：将目标设为相机前方，并应用 group 的逆变换
-                    const camFront = new THREE.Vector3(0, 0, 80); // 相机空间
+                    const camFront = new THREE.Vector3(0, 0, -80); // 相机空间
                     camFront.applyMatrix4(camera.matrixWorld); // 世界空间
                     targetPos = mainGroup.worldToLocal(camFront); // 局部空间
 
